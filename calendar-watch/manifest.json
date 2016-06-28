@@ -1,1 +1,1 @@
-﻿{"name":"Calendar Watch","id":20000,"commands":[{"theme":"Calendars","syntax":"Calendar GET LIST(&Y;&Y;&Y;&Y)"},{"theme":"Calendars","syntax":"Calendar ADD TO WATCH(&T;&T)"},{"theme":"Calendars","syntax":"Calendar REMOVE FROM WATCH(&T)"}]}
+﻿{"name":"Calendar Watch","id":20000,"commands":[{"theme":"Calendars","syntax":"Calendar GET LIST(&Y;&Y;&Y;&Y;&Y)"},{"theme":"Calendars","syntax":"Calendar ADD TO WATCH(&T;&T)"},{"theme":"Calendars","syntax":"Calendar REMOVE FROM WATCH(&T)"}]}

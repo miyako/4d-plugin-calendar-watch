@@ -124,7 +124,7 @@ namespace CalendarWatch
 							NSString *event_uid = [path_ns substringWithRange:[match rangeAtIndex:1]];
 							FSEventStreamEventFlags flags = eventFlags[i];
 							method_id_t methodId = getMethodId(path_ns);
-	//						NSLog(@"flags:%d", (unsigned int)flags);
+							NSLog(@"flags:%d", (unsigned int)flags);
 							if(methodId)
 							{
 								//created: 102656 (16, 15, 12, 8)
@@ -132,6 +132,9 @@ namespace CalendarWatch
 								//updated: 103680 (16, 15, 12, 10, 8)
 								//removed: 66048 (16, 9)
 								//removed: 71168 (16, 12, 10, 9)
+								
+								
+								/*
 								if(flags & kFSEventStreamEventFlagItemRemoved)
 								{
 									NSLog(@"removed calendar item:\t%@", event_uid);
@@ -147,6 +150,25 @@ namespace CalendarWatch
 								{
 									NSLog(@"created calendar item:\t%@", event_uid);
 									UserInfo userInfo(notification_create, event_uid, methodId);
+									notifications.push_back(userInfo);
+								}
+								*/
+								if(flags & kFSEventStreamEventFlagItemRemoved)
+								{
+									NSLog(@"removed calendar item:\t%@", event_uid);
+									UserInfo userInfo(notification_delete, event_uid, methodId);
+									notifications.push_back(userInfo);
+								}
+								else if(flags & kFSEventStreamEventFlagItemCreated)
+								{
+									NSLog(@"created calendar item:\t%@", event_uid);
+									UserInfo userInfo(notification_create, event_uid, methodId);
+									notifications.push_back(userInfo);
+								}
+								else
+								{
+									NSLog(@"modified calendar item:\t%@", event_uid);
+									UserInfo userInfo(notification_update, event_uid, methodId);
 									notifications.push_back(userInfo);
 								}
 							}
