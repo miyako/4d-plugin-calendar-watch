@@ -127,39 +127,13 @@ namespace CalendarWatch
 							NSLog(@"flags:%d", (unsigned int)flags);
 							if(methodId)
 							{
-								//created: 102656 (16, 15, 12, 8)
-								//updated: 70656 (16, 12, 10)
-								//updated: 103680 (16, 15, 12, 10, 8)
-								//removed: 66048 (16, 9)
-								//removed: 71168 (16, 12, 10, 9)
-								
-								
-								/*
-								if(flags & kFSEventStreamEventFlagItemRemoved)
+								if((flags & kFSEventStreamEventFlagItemRemoved) == kFSEventStreamEventFlagItemRemoved)
 								{
 									NSLog(@"removed calendar item:\t%@", event_uid);
 									UserInfo userInfo(notification_delete, event_uid, methodId);
 									notifications.push_back(userInfo);
 								}
-								else if(flags & kFSEventStreamEventFlagItemInodeMetaMod)
-								{
-									NSLog(@"modified calendar item:\t%@", event_uid);
-									UserInfo userInfo(notification_update, event_uid, methodId);
-									notifications.push_back(userInfo);
-								}else if(flags & kFSEventStreamEventFlagItemCreated)
-								{
-									NSLog(@"created calendar item:\t%@", event_uid);
-									UserInfo userInfo(notification_create, event_uid, methodId);
-									notifications.push_back(userInfo);
-								}
-								*/
-								if(flags & kFSEventStreamEventFlagItemRemoved)
-								{
-									NSLog(@"removed calendar item:\t%@", event_uid);
-									UserInfo userInfo(notification_delete, event_uid, methodId);
-									notifications.push_back(userInfo);
-								}
-								else if(flags & kFSEventStreamEventFlagItemCreated)
+								else if((flags & kFSEventStreamEventFlagItemCreated) == kFSEventStreamEventFlagItemCreated)
 								{
 									NSLog(@"created calendar item:\t%@", event_uid);
 									UserInfo userInfo(notification_create, event_uid, methodId);
@@ -406,7 +380,7 @@ void listenerLoopStart()
 	}
 	[l release];
 }
-
+ 
 void listenerLoopFinish()
 {
 	//global variables: CalendarWatch::monitorProcessId,processShouldTerminate
