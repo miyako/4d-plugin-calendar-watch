@@ -11,6 +11,37 @@ Return event IDs of modified calendar item by monitoring the sqlite directory us
 
 <img src="https://cloud.githubusercontent.com/assets/1725068/18940649/21945000-8645-11e6-86ed-4a0f800e5a73.png" width="32" height="32" /> <img src="https://cloud.githubusercontent.com/assets/1725068/18940648/2192ddba-8645-11e6-864d-6d5692d55717.png" width="32" height="32" />
 
+##Syntax
+
+```
+Calendar GET LIST (ids;paths;titles;types;watchings)
+```
+
+Parameter|Type|Description
+------------|------------|----
+ids|ARRAY TEXT|UUID of a calendar
+paths|ARRAY TEXT|Full path of the folder that contains the .ics files
+titles|ARRAY TEXT|Title
+types|ARRAY INT32|``1``: caldav (e.g. iCloud), ``5``: Exchange
+watchings|ARRAY INT32|``!`` If the calendar path is watched by the plugin
+
+```
+Calendar ADD TO WATCH (path;method)
+```
+
+Parameter|Type|Description
+------------|------------|----
+path|TEXT|Full path of the folder that contains the .ics files
+method|TEXT|Callback method name
+
+```
+Calendar REMOVE FROM WATCH (path)
+```
+
+Parameter|Type|Description
+------------|------------|----
+path|TEXT|Full path of the folder that contains the .ics files
+
 ##Examples
 
 ```
