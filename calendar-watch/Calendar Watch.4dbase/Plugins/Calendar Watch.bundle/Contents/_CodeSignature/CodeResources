@@ -109,6 +109,10 @@
 		<data>
 		oa0m02mbX3CjD7oZR3BL6B0DAKk=
 		</data>
+		<key>Resources/manifest.json</key>
+		<data>
+		vMCEglLrghSJmjFRw/zgviel4gg=
+		</data>
 	</dict>
 	<key>files2</key>
 	<dict>
@@ -305,6 +309,13 @@
 			pe32A2+ENPuAiWCqTzJew9NLVsTybhkiRhalthxMGTs=
 			</data>
 		</dict>
+		<key>Resources/manifest.json</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			tq/G7acxnnxZ72XsyYdmFpll0BAxbuNnTj9sOj8orAw=
+			</data>
+		</dict>
 		<key>Windows/Calendar Watch.4DX</key>
 		<dict>
 			<key>hash2</key>
@@ -332,15 +343,6 @@
 			<data>
 			EKLRdLPtg+PsdxOrCPdnhlHZLbWCJYLapu/sbQTYgHg=
 			</data>
-		</dict>
-		<key>manifest.json</key>
-		<dict>
-			<key>cdhash</key>
-			<data>
-			VvG3l/c8TZBm//Fj/eRZe9SA1CA=
-			</data>
-			<key>requirement</key>
-			<string>identifier manifest and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = Y69CWUC25B</string>
 		</dict>
 	</dict>
 	<key>rules</key>
