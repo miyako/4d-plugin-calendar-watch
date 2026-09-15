@@ -10,6 +10,7 @@
 
 #include "4DPluginAPI.h"
 #include "4DPlugin.h"
+#include <deque>
 
 namespace CalendarWatch
 {
@@ -61,34 +62,41 @@ namespace CalendarWatch
 	const process_name_t processName = (PA_Unichar *)"$\0C\0A\0L\0E\0N\0D\0A\0R\0_\0W\0A\0T\0C\0H\0\0\0";
 	
 	std::map<CUTF8String, method_id_t> paths;
-	std::vector<UserInfo> notifications;
+	std::deque<UserInfo> notifications;
 	
 	FSEventStreamRef eventStream = 0;
 	NSTimeInterval latency = 1.0;
 	process_number_t monitorProcessId = 0;
 	bool processShouldTerminate = false;
 	
+	//single shared lock guarding every access to the globals above (paths, notifications,
+	//eventStream, monitorProcessId, processShouldTerminate). Previously each function allocated
+	//its own brand-new NSLock and locked it immediately -- a fresh lock is never contended, so
+	//tryLock always succeeded and no real mutual exclusion existed between concurrent 4D
+	//processes touching these globals. Using one shared instance is what actually makes the
+	//tryLock/unlock pattern below mean something.
+	NSLock *gLock = [[NSLock alloc] init];
+	
 	method_id_t getMethodId(NSString *path_ns)
 	{
+		method_id_t result = 0;
 		@autoreleasepool
 		{
 			NSString *monitorPath_ns = [path_ns stringByDeletingLastPathComponent];
 			CUTF8String monitorPath = CUTF8String((const uint8_t *)[monitorPath_ns UTF8String]);
 			monitorPath += (const uint8_t *)"/";
 			//global variables: CalendarWatch::paths
-			NSLock *l = [[NSLock alloc]init];
-			if ([l tryLock])
+			if ([gLock tryLock])
 			{
 				auto i = paths.find(monitorPath);
 				if (i != paths.end())
 				{
-					return i->second;
+					result = i->second;
 				}
-				[l unlock];
+				[gLock unlock];
 			}
-			[l release];
 		}
-		return 0;
+		return result;
 	}
 	
 	void gotEvent(FSEventStreamRef stream,
@@ -100,13 +108,12 @@ namespace CalendarWatch
 								)
 	{
 		//global variables: CalendarWatch::notifications
-		NSLock *l = [[NSLock alloc]init];
-		if ([l tryLock])
+		if ([gLock tryLock])
 		{
 			@autoreleasepool
 			{
 				NSArray *paths_ns = (NSArray *)eventPaths;
-				NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"([:HexDigit:]{8}-[:HexDigit:]{4}-[:HexDigit:]{4}-[:HexDigit:]{4}-[:HexDigit:]{12})\\.ics$"
+				NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"([[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12})\\.ics$"
 																																							 options:NSRegularExpressionCaseInsensitive
 																																								 error:nil];
 				if(regex)
@@ -151,16 +158,14 @@ namespace CalendarWatch
 				}
 			}//@autoreleasepool
 			listenerLoopExecute();
-			[l unlock];
+			[gLock unlock];
 		}
-		[l release];
 	}
 	
 	void endMonitor()
 	{
 		//global variables: CalendarWatch::eventStream
-		NSLock *l = [[NSLock alloc]init];
-		if ([l tryLock])
+		if ([gLock tryLock])
 		{
 			if(eventStream)
 			{
@@ -171,9 +176,8 @@ namespace CalendarWatch
 				eventStream = 0;
 				NSLog(@"stop monitoring paths");
 			}
-			[l unlock];
+			[gLock unlock];
 		}
-		[l release];
 	}
 	
 	void startMonitor()
@@ -182,8 +186,7 @@ namespace CalendarWatch
 		
 		NSMutableArray *paths_ns = [[NSMutableArray alloc]init];
 		//global variables: CalendarWatch::paths
-		NSLock *l = [[NSLock alloc]init];
-		if ([l tryLock])
+		if ([gLock tryLock])
 		{
 			for(std::map<CUTF8String, method_id_t>::iterator it = CalendarWatch::paths.begin(); it != CalendarWatch::paths.end(); it++)
 			{
@@ -195,7 +198,7 @@ namespace CalendarWatch
 					[path_ns release];
 				}
 			}
-			[l unlock];
+			[gLock unlock];
 		}
 		
 		endMonitor();
@@ -204,7 +207,7 @@ namespace CalendarWatch
 		
 		if([paths_ns count])
 		{
-			if ([l tryLock])
+			if ([gLock tryLock])
 			{
 				eventStream = FSEventStreamCreate(NULL,
 																					(FSEventStreamCallback)gotEvent,
@@ -221,70 +224,62 @@ namespace CalendarWatch
 				FSEventStreamScheduleWithRunLoop(eventStream, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
 				FSEventStreamStart(eventStream);
 				
-				[l unlock];
+				[gLock unlock];
 			}
-			[l release];
-			
 		}
 		[paths_ns release];
 	}
 	
 	bool isInWatch(CUTF8String &path)
 	{
-		NSLock *l = [[NSLock alloc]init];
-		if ([l tryLock])
+		bool result = false;
+		if ([gLock tryLock])
 		{
 			auto i = paths.find(path);
-			return (i != paths.end());
-			[l unlock];
+			result = (i != paths.end());
+			[gLock unlock];
 		}
-		[l release];
-		
-		return false;
+		return result;
 	}
 	
 	void addToWatch(CUTF8String &path, method_id_t methodId)
 	{
 		if (!isInWatch(path))
 		{
-			NSLock *l = [[NSLock alloc]init];
-			if ([l tryLock])
+			if ([gLock tryLock])
 			{
 				paths.insert(std::map<CUTF8String, method_id_t>::value_type(path, methodId));
-				PA_RunInMainProcess((PA_RunInMainProcessProcPtr)startMonitor, NULL);
-				[l unlock];
+				[gLock unlock];
 			}
-			[l release];
+			PA_RunInMainProcess((PA_RunInMainProcessProcPtr)startMonitor, NULL);
 		}
 	}
 	
 	void removeFromWatch(CUTF8String &path)
 	{
-		NSLock *l = [[NSLock alloc]init];
-		if ([l tryLock])
+		bool empty = false;
+		if ([gLock tryLock])
 		{
 			paths.erase(path);
-			PA_RunInMainProcess((PA_RunInMainProcessProcPtr)startMonitor, NULL);
-			if(!paths.size())
-			{
-				listenerLoopFinish();
-			}
-						[l unlock];
+			empty = !paths.size();
+			[gLock unlock];
 		}
-		[l release];
+		PA_RunInMainProcess((PA_RunInMainProcessProcPtr)startMonitor, NULL);
+		if(empty)
+		{
+			listenerLoopFinish();
+		}
 	}
 
 	void removeAllFromWatch()
 	{
-		NSLock *l = [[NSLock alloc]init];
-		if ([l tryLock])
+		if ([gLock tryLock])
 		{
 			paths.clear();
-			PA_RunInMainProcess((PA_RunInMainProcessProcPtr)endMonitor, NULL);
-			listenerLoopFinish();
-			[l unlock];
+			[gLock unlock];
 		}
-		[l release];
+		PA_RunInMainProcess((PA_RunInMainProcessProcPtr)endMonitor, NULL);
+		listenerLoopFinish();
 	}
 	
 }
@@ -322,8 +317,10 @@ void generateUuid(C_TEXT &returnValue)
 	returnValue.setUTF16String([[[NSUUID UUID]UUIDString]stringByReplacingOccurrencesOfString:@"-" withString:@""]);
 #else
 	CFUUIDRef uuid = CFUUIDCreate(kCFAllocatorDefault);
-	NSString *uuid_str = (NSString *)CFUUIDCreateString(kCFAllocatorDefault, uuid);
-	returnValue.setUTF16String([uuid_str stringByReplacingOccurrencesOfString:@"-" withString:@""]);
+	CFStringRef uuid_str = CFUUIDCreateString(kCFAllocatorDefault, uuid);
+	returnValue.setUTF16String([(NSString *)uuid_str stringByReplacingOccurrencesOfString:@"-" withString:@""]);
+	CFRelease(uuid_str);
+	CFRelease(uuid);
 #endif
 }
 
@@ -331,8 +328,6 @@ void listenerLoop()
 {
 	CalendarWatch::monitorProcessId = PA_GetCurrentProcessNumber();
 	NSLog(@"%@", @"listenerLoop:start");
-
-	NSLock *l = [[NSLock alloc]init];
 	
 	while((!CalendarWatch::processShouldTerminate) && !PA_IsProcessDying())
 	{
@@ -340,7 +335,7 @@ void listenerLoop()
 		PA_YieldAbsolute();
 		
 		//global variables: CalendarWatch::notifications,processShouldTerminate
-		if ([l tryLock])
+		if ([CalendarWatch::gLock tryLock])
 		{
 		if(!CalendarWatch::processShouldTerminate)
 		{
@@ -353,21 +348,19 @@ void listenerLoop()
 											(PA_Unichar *)processName.getUTF16StringPtr());
 			}
 		}
-			[l unlock];
+			[CalendarWatch::gLock unlock];
 		}
 	}//while(!CalendarWatch::processShouldTerminate)
 	CalendarWatch::monitorProcessId = 0;
 	
 	PA_KillProcess();
 	NSLog(@"%@", @"listenerLoop:end");
-	[l release];
 }
 
 void listenerLoopStart()
 {
 	//global variables: CalendarWatch::monitorProcessId,processShouldTerminate
-	NSLock *l = [[NSLock alloc]init];
-	if ([l tryLock])
+	if ([CalendarWatch::gLock tryLock])
 	{
 		if(!CalendarWatch::monitorProcessId)
 		{
@@ -376,46 +369,40 @@ void listenerLoopStart()
 										CalendarWatch::stachSize,
 										CalendarWatch::processName);
 		}
-		[l unlock];
+		[CalendarWatch::gLock unlock];
 	}
-	[l release];
 }
  
 void listenerLoopFinish()
 {
 	//global variables: CalendarWatch::monitorProcessId,processShouldTerminate
-	NSLock *l = [[NSLock alloc]init];
-	if ([l tryLock])
+	if ([CalendarWatch::gLock tryLock])
 	{
 		CalendarWatch::processShouldTerminate = true;
 		PA_UnfreezeProcess(CalendarWatch::monitorProcessId);
-		[l unlock];
+		[CalendarWatch::gLock unlock];
 	}
-	[l release];
 }
 
 void listenerLoopExecute()
 {
 	//global variables: CalendarWatch::monitorProcessId,processShouldTerminate
-	NSLock *l = [[NSLock alloc]init];
-	if ([l tryLock])
+	if ([CalendarWatch::gLock tryLock])
 	{
 		CalendarWatch::processShouldTerminate = false;
 		PA_UnfreezeProcess(CalendarWatch::monitorProcessId);
-		[l unlock];
+		[CalendarWatch::gLock unlock];
 	}
-	[l release];
 }
 
 void listenerLoopExecuteMethod()
 {
 	//global variables: CalendarWatch::notifications
-	NSLock *l = [[NSLock alloc]init];
-	if ([l tryLock])
+	if ([CalendarWatch::gLock tryLock])
 	{
 		if(CalendarWatch::notifications.size())
 		{
-			std::vector<CalendarWatch::UserInfo>::iterator it = CalendarWatch::notifications.begin();
+			std::deque<CalendarWatch::UserInfo>::iterator it = CalendarWatch::notifications.begin();
 			
 			CalendarWatch::UserInfo userInfo = *it;
 			
@@ -434,16 +421,15 @@ void listenerLoopExecuteMethod()
 			PA_SetStringVariable(&params[0], &event);
 			PA_SetLongintVariable(&params[1], notification);
 			
-			CalendarWatch::notifications.erase(it);
+			CalendarWatch::notifications.pop_front();
 			
 			PA_ExecuteMethodByID(methodId, params, 2);
 			
 			PA_ClearVariable(&params[0]);
 			PA_ClearVariable(&params[1]);
 		}
-		[l unlock];
+		[CalendarWatch::gLock unlock];
 	}
-	[l release];
 }
 
 #pragma mark -
@@ -528,7 +514,7 @@ void sqlite3_get_calendar_group_uid(NSString *userCalendarPath,
 		}else
 		{
 			sqlite3_stmt *sql = NULL;
-			err = sqlite3_prepare_v2(sqlite3_calendar, sql_get_calendar_group_uid, 1024, &sql, NULL);
+			err = sqlite3_prepare_v2(sqlite3_calendar, sql_get_calendar_group_uid, -1, &sql, NULL);
 			if(err != SQLITE_OK)
 			{
 				NSLog(@"failed to prepare sqlite statement");
@@ -546,8 +532,10 @@ void sqlite3_get_calendar_group_uid(NSString *userCalendarPath,
 				}
 				sqlite3_finalize(sql);
 			}
-			sqlite3_close(sqlite3_calendar);
 		}
+		//sqlite3_open can allocate a handle even when it reports failure; sqlite3_close must
+		//be called on it either way to avoid leaking that handle (a NULL handle is safe to close).
+		sqlite3_close(sqlite3_calendar);
 		[l unlock];
 	}
 	[l release];
@@ -570,7 +558,7 @@ void sqlite3_get_calendars(NSString *userCalendarPath,
 		}else
 		{
 			sqlite3_stmt *sql = NULL;
-			err = sqlite3_prepare_v2(sqlite3_calendar, sql_get_calendars, 1024, &sql, NULL);
+			err = sqlite3_prepare_v2(sqlite3_calendar, sql_get_calendars, -1, &sql, NULL);
 			if(err != SQLITE_OK)
 			{
 				NSLog(@"failed to prepare sqlite statement");
@@ -593,8 +581,9 @@ void sqlite3_get_calendars(NSString *userCalendarPath,
 				}
 				sqlite3_finalize(sql);
 			}
-			sqlite3_close(sqlite3_calendar);
 		}
+		//see sqlite3_get_calendar_group_uid above: close unconditionally, not only on the success path.
+		sqlite3_close(sqlite3_calendar);
 		[l unlock];
 	}
 	[l release];
@@ -604,6 +593,19 @@ void sqlite3_get_calendars(NSString *userCalendarPath,
 
 void Calendar_GET_LIST(sLONG_PTR *pResult, PackagePtr pParams)
 {
+	//uids/titles as read straight from the sqlite cache -- one row in the cache does not
+	//always have a matching on-disk .caldav/.exchange folder, so this list can be longer
+	//than the final, path-resolved output below.
+	ARRAY_TEXT cache_uids;
+	ARRAY_TEXT cache_titles;
+	
+	//final, index-aligned output: a row is only appended here once its on-disk path/type/
+	//watching state has actually been resolved, so out_uids[i]/out_paths[i]/out_titles[i]/
+	//out_types[i]/out_watchings[i] always describe the same calendar. Previously out_uids/
+	//out_titles were appended for every sqlite row regardless of whether a matching folder
+	//was found, while out_paths/out_types/out_watchings were only appended when it was --
+	//any calendar missing a local folder shifted every later row out of alignment across
+	//the two groups of arrays.
 	ARRAY_TEXT out_uids;
 	ARRAY_TEXT out_paths;
 	ARRAY_TEXT out_titles;
@@ -616,24 +618,27 @@ void Calendar_GET_LIST(sLONG_PTR *pResult, PackagePtr pParams)
 																		[NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES)
 																		 objectAtIndex:0]];
 			
+		cache_uids.setSize(1);
+		cache_titles.setSize(1);
 		out_uids.setSize(1);
 		out_paths.setSize(1);
 		out_titles.setSize(1);
 		out_types.setSize(1);
 		out_watchings.setSize(1);
 		
-		sqlite3_get_calendars([NSString stringWithFormat:@"%@Calendar Cache", userCalendarPath], out_uids, out_titles);
+		sqlite3_get_calendars([NSString stringWithFormat:@"%@Calendar Cache", userCalendarPath], cache_uids, cache_titles);
 		
-		NSUInteger size = out_uids.getSize();
+		NSUInteger size = cache_uids.getSize();
+		
+		NSFileManager *defaultManager = [NSFileManager defaultManager];
 		
 		for(NSUInteger i = 0; i < size; ++i)
 		{
-			CUTF8String calendar_uid, group_uid;
-			out_uids.copyUTF8StringAtIndex(&calendar_uid, i);
+			CUTF8String calendar_uid, group_uid, calendar_title;
+			cache_uids.copyUTF8StringAtIndex(&calendar_uid, i);
+			cache_titles.copyUTF8StringAtIndex(&calendar_title, i);
 			
 			sqlite3_get_calendar_group_uid([NSString stringWithFormat:@"%@Calendar Cache", userCalendarPath], calendar_uid, group_uid);
-			
-			NSFileManager *defaultManager = [[NSFileManager alloc]init];
 			
 			NSString *path_caldav = [NSString stringWithFormat:@"%@%s%s/%s%s", userCalendarPath, group_uid.c_str(), ".caldav", calendar_uid.c_str(), ".calendar"];
 			NSString *path_exchange = [NSString stringWithFormat:@"%@%s%s/%s%s", userCalendarPath, group_uid.c_str(), ".exchange", calendar_uid.c_str(), ".calendar"];
@@ -641,17 +646,23 @@ void Calendar_GET_LIST(sLONG_PTR *pResult, PackagePtr pParams)
 			BOOL isDirectory;
 			if(([defaultManager fileExistsAtPath:path_caldav isDirectory:&isDirectory]) && isDirectory)
 			{
+				out_uids.appendUTF8String((const uint8_t *)calendar_uid.c_str(), calendar_uid.length());
+				out_titles.appendUTF8String((const uint8_t *)calendar_title.c_str(), calendar_title.length());
 				out_types.appendIntValue(1);
 				out_paths.appendUTF16String([NSString stringWithFormat:@"%@/Events/", path_caldav]);
 				out_watchings.appendIntValue(CalendarWatch::isInWatch(calendar_uid));
 			}
 			else if(([defaultManager fileExistsAtPath:path_exchange isDirectory:&isDirectory]) && isDirectory)
 			{
+				out_uids.appendUTF8String((const uint8_t *)calendar_uid.c_str(), calendar_uid.length());
+				out_titles.appendUTF8String((const uint8_t *)calendar_title.c_str(), calendar_title.length());
 				out_types.appendIntValue(5);
 				out_paths.appendUTF16String([NSString stringWithFormat:@"%@/Events/", path_exchange]);
 				out_watchings.appendIntValue(CalendarWatch::isInWatch(calendar_uid));
 			}
-			[defaultManager release];
+			//else: calendar exists in the sqlite cache but has no resolvable local folder --
+			//intentionally left out of every output array rather than left dangling in only
+			//some of them.
 		}
 	
 	}//@autoreleasepool
