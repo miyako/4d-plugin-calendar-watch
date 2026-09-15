@@ -1,1 +1,4 @@
 calendar-watch/build/*
+build/*
+Calendar Watch.4dbase/userPreferences.*
+Calendar Watch.4dbase/Project/DerivedData/*
