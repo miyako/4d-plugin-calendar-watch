@@ -230,6 +230,83 @@ The method receives no return-value slot to fill and isn't expected to signal an
 
 ---
 
+## Source versions and manual publication
+
+**Bump version** and **Build** are independent manual Actions workflows. Neither
+pushes nor pull requests nor tags trigger a build. Select the intended branch
+when dispatching Bump version, then choose patch, minor or major. It validates
+the clean, immutable selected `github.sha` and commits source metadata only to
+that explicit branch. Dispatch **Build** separately on the resulting commit;
+Build has no inputs, checks out only its selected `github.sha`, and derives
+`vX.Y.Z` from strict source metadata, not an existing tag.
+
+The original bump workflow header explicitly promised coordinated
+`MARKETING_VERSION` and `CURRENT_PROJECT_VERSION`. Its marketing-first
+implementation nevertheless left current versions at `2.0.0` as marketing
+reached `2.0.3` (bump commits `9a457aa`, `01119d4`, `b218324`).
+The migration repairs all six current-version settings and the stale English
+source version strings (`2.0`) to the existing `2.0.3` authority, **without a
+release increment**. Future bumps require both settings to agree across all
+six configurations and co-bump their literals, source plist literals when
+present, and both localized version strings. Supported Xcode references remain
+references, including `Info.plist`'s `$(CURRENT_PROJECT_VERSION)`; absent
+`CFBundleVersion` stays absent. Serialization, BOM, line endings and file modes
+are preserved. Prebuilt bundles/archives, Windows project files, native
+dependencies, 4D project/schema data and localization counters are excluded.
+
+Bump requires an executable `.github/scripts/bump-hooks/pre-push` initially and
+again immediately before pushing. Its nonforce, no-follow-tags push uses the
+literal new commit SHA and accepts exactly one advertised update: the selected
+branch's OLD SHA must equal the dispatch SHA, NEW must equal HEAD, and that
+commit must have exactly one parent, the selected SHA. An advance, rewind,
+deletion or same-result race after the final remote lookup is rejected.
+Redispatch from the new branch state after a rejected race.
+
+Build retains the existing **macOS-only** universal native job: Xcode `Default`,
+arm64/x86_64 verification, Developer ID signing and strict verification, zip/dmg
+packaging, both notary submissions and DMG stapling. It uses the SDK's SQLite,
+Cocoa/AppKit/CoreGraphics and the existing 4D Plugin API/resources, with no new
+dependency installation or Windows job. The existing secret names remain
+`APPLE_DEVELOPER_ID_CERTIFICATE`, `APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD`,
+`KEYCHAIN_PASSWORD`, `NOTARYTOOL_APPLE_ID`, `NOTARYTOOL_TEAM_ID` and
+`NOTARYTOOL_PASSWORD`. Existing native caveats are unchanged: the workflow
+overrides the project's macOS 11.5 deployment target with 11.0, Xcode signing
+configuration remains intact, and the project's Deployment-only notarization
+script is not run by `Default`. Packaging uses the existing checked-in bundle,
+which contains a legacy Windows64 binary; that is not a supported Windows build
+or a newly built Windows asset.
+
+Publication is serialized repository-wide across branches, without cancelling a
+running build. Before native work and again after **all** native gates and
+asset validation, Build checks the exact remote tag and authenticated,
+paginated releases (including drafts). Every page and entry must validate;
+missing authorization, 404, network failures or malformed responses stop
+publication rather than imply absence. Existing tags or releases always block.
+Only after the final complete no-match check does it create a tag at the exact
+selected SHA using create-only `POST git/refs`, then verify that remote SHA.
+It creates a public, non-prerelease release with the original empty-notes policy
+and uploads `Calendar Watch-X.Y.Z.zip` and `Calendar Watch-X.Y.Z.dmg` separately
+to the newly returned release ID. A same-SHA tag creation race also fails.
+
+**Recovery:** failed publication never deletes, patches, overwrites, retries or
+rolls back a tag, release or uploaded asset. Inspect the error, selected SHA,
+remote tag, release ID and any uploaded assets before deciding on manual
+recovery. A tag-only or partial-release state intentionally blocks another
+Build for that version; do not blindly rerun it. Resolve retained state manually
+under repository policy, or deliberately bump source and dispatch a new Build.
+No automatic draft cleanup or asset clobber is performed.
+
+Helper provenance: the six-configuration, byte-preserving validator, exact
+advertisement guard and lifecycle tests were adapted from the committed
+`miyako/4d-plugin-crc32#1` implementation
+`45081f9490a6898ce23a43b6557547e1c57e467b`.
+Run `actionlint .github/workflows/*.yml` and
+`PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s .github/tests -v`
+for non-native checks. Tests use temporary source copies, local bare Git remotes
+and mocked publication APIs; they do not sign, notarize or publish.
+
+---
+
 ## Quick reference
 
 ```4d
