@@ -417,13 +417,13 @@ void listenerLoopExecuteMethod()
 			params[0] = PA_CreateVariable(eVK_Unistring);
 			params[1] = PA_CreateVariable(eVK_Longint);
 			
-			PA_Unistring event = PA_CreateUnistring((PA_Unichar *)eventId.c_str());
-			PA_SetStringVariable(&params[0], &event);
+			PA_SetUnistring(&params[0].uValue.fString, (PA_Unichar *)eventId.c_str());
 			PA_SetLongintVariable(&params[1], notification);
 			
 			CalendarWatch::notifications.pop_front();
 			
-			PA_ExecuteMethodByID(methodId, params, 2);
+			PA_Variable returned = PA_ExecuteMethodByID(methodId, params, 2);
+			PA_ClearVariable(&returned);
 			
 			PA_ClearVariable(&params[0]);
 			PA_ClearVariable(&params[1]);

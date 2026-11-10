@@ -19,6 +19,35 @@ Command | Returns | Purpose
 
 **Platforms:** macOS only (Intel and Apple Silicon).
 
+## Native string ownership regression
+
+Run `python3 .github/tests/run_string_ownership.py` on macOS with Xcode command-line
+tools. It compiles the actual plugin, wrappers and unchanged bundled SDK against
+a tracking engine shim with ASan/UBSan, in a temporary directory. It does not
+invoke the Xcode Deployment phase, signing, notarization, packaging or publication.
+The `String ownership regression` PR workflow runs the same source-only check.
+
+The bundled `4DPluginAPI.c` identifies itself as rev v14, its header as rev v13;
+these labels do not establish an upstream SDK release. Its scalar string setter
+shallow-assigns descriptors, whereas `PA_SetUnistring` updates existing owned
+content. Callback arguments therefore update their initial string rather than
+overwriting an owned empty allocation, and the unused method return is cleared.
+Queued notifications retain C++ string copies, not SDK string aliases.
+
+The regression covers allocated/null empty strings, exact ASCII/BMP/supplementary
+UTF-16 content, undefined/text/array callback returns (including an engine-error
+return), repeated array transfers/replacements/shrink/clear, borrowed reads and
+rejected destinations. It also exercises the compiled but currently unexposed
+picture helpers: path cleanup has one owner, and conversion byte counts are
+converted to UTF-16 units. Picture result handoffs are unchanged.
+
+This is engine-shim evidence, not execution in a 4D host or a reproduction of a
+Windows crash. Real Calendar/FSEvents scheduling, callback reentrancy, allocation
+failure behavior, and picture-engine semantics require host testing. In
+particular, the dormant `C_POINTER::getVariable` reference-like union handoff is
+not cleared speculatively: independent ownership of the copied representation
+has not been established.
+
 ---
 
 ## Requirements & platform notes
