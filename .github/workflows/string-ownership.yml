@@ -1,0 +1,22 @@
+name: String ownership regression
+
+on:
+  pull_request:
+    paths:
+      - '4DPlugin.cpp'
+      - '4DPlugin.h'
+      - '4D Plugin API/**'
+      - '.github/tests/*ownership*'
+      - '.github/workflows/string-ownership.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ownership:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run actual-source ASan and UBSan host shim
+        run: python3 .github/tests/run_string_ownership.py
